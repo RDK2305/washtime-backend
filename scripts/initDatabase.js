@@ -1,45 +1,54 @@
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 require('dotenv').config();
 
 const initDatabase = async () => {
-  let connection;
-  
-  try {
-    // Connect without database first
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD,
-      port: process.env.DB_PORT || 3306
-    });
+  // Use individual connection parameters with SSL enabled
+  const pool = new Pool({
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT || 5432,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    ssl: {
+      rejectUnauthorized: false  // Required for Render PostgreSQL
+    }
+  });
 
-    console.log('🔄 Creating database...');
+  try {
+    console.log('🔄 Connecting to PostgreSQL database...');
+    console.log(`📍 Host: ${process.env.DB_HOST}`);
+    console.log(`📍 Database: ${process.env.DB_NAME}`);
+    console.log('🔒 SSL: Enabled');
     
-    // Create database
-    await connection.query(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME || 'washtime_db'}`);
-    await connection.query(`USE ${process.env.DB_NAME || 'washtime_db'}`);
-    
-    console.log('✅ Database created successfully');
+    const client = await pool.connect();
+    console.log('✅ Connected successfully');
+
+    console.log('🔄 Dropping existing tables (if any)...');
+    await client.query('DROP TABLE IF EXISTS Bookings CASCADE');
+    await client.query('DROP TABLE IF EXISTS LaundryMachines CASCADE');
+    await client.query('DROP TABLE IF EXISTS Users CASCADE');
+    console.log('✅ Old tables dropped');
+
     console.log('🔄 Creating tables...');
 
     // Create Users table
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS Users (
-        user_id INT PRIMARY KEY AUTO_INCREMENT,
+    await client.query(`
+      CREATE TABLE Users (
+        user_id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         email VARCHAR(100) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
-        role ENUM('Resident', 'Admin') DEFAULT 'Resident',
+        role VARCHAR(20) DEFAULT 'Resident' CHECK (role IN ('Resident', 'Admin')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log('✅ Users table created');
 
     // Create LaundryMachines table
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS LaundryMachines (
-        machine_id INT PRIMARY KEY AUTO_INCREMENT,
-        machine_type ENUM('Washer', 'Dryer') NOT NULL,
+    await client.query(`
+      CREATE TABLE LaundryMachines (
+        machine_id SERIAL PRIMARY KEY,
+        machine_type VARCHAR(20) NOT NULL CHECK (machine_type IN ('Washer', 'Dryer')),
         machine_number VARCHAR(10) NOT NULL,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -48,44 +57,72 @@ const initDatabase = async () => {
     console.log('✅ LaundryMachines table created');
 
     // Create Bookings table
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS Bookings (
-        booking_id INT PRIMARY KEY AUTO_INCREMENT,
-        user_id INT NOT NULL,
-        machine_id INT NOT NULL,
+    await client.query(`
+      CREATE TABLE Bookings (
+        booking_id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES Users(user_id) ON DELETE CASCADE,
+        machine_id INTEGER NOT NULL REFERENCES LaundryMachines(machine_id) ON DELETE CASCADE,
         booking_date DATE NOT NULL,
         start_time TIME NOT NULL,
         end_time TIME NOT NULL,
-        status ENUM('Booked', 'Cancelled') DEFAULT 'Booked',
+        status VARCHAR(20) DEFAULT 'Booked' CHECK (status IN ('Booked', 'Cancelled')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE CASCADE,
-        FOREIGN KEY (machine_id) REFERENCES LaundryMachines(machine_id) ON DELETE CASCADE,
-        UNIQUE KEY unique_booking (machine_id, booking_date, start_time)
+        UNIQUE(machine_id, booking_date, start_time)
       )
     `);
     console.log('✅ Bookings table created');
 
+    // Create indexes for better performance
+    console.log('🔄 Creating indexes...');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_users_email ON Users(email)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_bookings_user ON Bookings(user_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_bookings_machine ON Bookings(machine_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_bookings_date ON Bookings(booking_date)');
+    console.log('✅ Indexes created');
+
     // Insert sample laundry machines
     console.log('🔄 Inserting sample machines...');
-    await connection.query(`
+    await client.query(`
       INSERT INTO LaundryMachines (machine_type, machine_number, is_active) VALUES
       ('Washer', 'W1', TRUE),
       ('Washer', 'W2', TRUE),
       ('Dryer', 'D1', TRUE),
       ('Dryer', 'D2', TRUE)
-      ON DUPLICATE KEY UPDATE machine_id=machine_id
     `);
     console.log('✅ Sample machines inserted');
 
-    console.log('🎉 Database initialization completed successfully!');
+    // Create admin user (password: admin123)
+    console.log('🔄 Creating admin user...');
+    const bcrypt = require('bcryptjs');
+    const adminPassword = await bcrypt.hash('admin123', 10);
     
+    await client.query(`
+      INSERT INTO Users (name, email, password, role) VALUES
+      ('Admin', 'admin@washtime.com', $1, 'Admin')
+      ON CONFLICT (email) DO NOTHING
+    `, [adminPassword]);
+    console.log('✅ Admin user created (email: admin@washtime.com, password: admin123)');
+
+    console.log('\n🎉 Database initialization completed successfully!\n');
+    console.log('📊 Summary:');
+    console.log('   ✅ 3 tables created (Users, LaundryMachines, Bookings)');
+    console.log('   ✅ 4 indexes created');
+    console.log('   ✅ 4 sample machines inserted');
+    console.log('   ✅ 1 admin user created\n');
+    
+    client.release();
   } catch (error) {
     console.error('❌ Database initialization failed:', error.message);
+    console.error('\nPlease verify your .env file has these values:');
+    console.error('  DB_HOST:', process.env.DB_HOST ? '✓' : '✗ MISSING');
+    console.error('  DB_PORT:', process.env.DB_PORT ? '✓' : '✗ MISSING');
+    console.error('  DB_USER:', process.env.DB_USER ? '✓' : '✗ MISSING');
+    console.error('  DB_PASSWORD:', process.env.DB_PASSWORD ? '✓' : '✗ MISSING');
+    console.error('  DB_NAME:', process.env.DB_NAME ? '✓' : '✗ MISSING');
+    console.error('\nFull error:', error);
     process.exit(1);
   } finally {
-    if (connection) {
-      await connection.end();
-    }
+    await pool.end();
   }
 };
 

@@ -32,12 +32,12 @@ router.post('/register', registerValidation, async (req, res) => {
     const { name, email, password, role } = req.body;
 
     // Check if user already exists
-    const [existingUsers] = await pool.query(
-      'SELECT * FROM Users WHERE email = ?',
+    const existingUser = await pool.query(
+      'SELECT * FROM Users WHERE email = $1',
       [email]
     );
 
-    if (existingUsers.length > 0) {
+    if (existingUser.rows.length > 0) {
       return res.status(400).json({ 
         success: false, 
         message: 'User already exists with this email' 
@@ -48,19 +48,21 @@ router.post('/register', registerValidation, async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Insert new user
-    const [result] = await pool.query(
-      'INSERT INTO Users (name, email, password, role) VALUES (?, ?, ?, ?)',
+    const result = await pool.query(
+      'INSERT INTO Users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING user_id, name, email, role',
       [name, email, hashedPassword, role || 'Resident']
     );
+
+    const newUser = result.rows[0];
 
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
       user: {
-        user_id: result.insertId,
-        name,
-        email,
-        role: role || 'Resident'
+        user_id: newUser.user_id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role
       }
     });
   } catch (error) {
@@ -87,19 +89,19 @@ router.post('/login', loginValidation, async (req, res) => {
     const { email, password } = req.body;
 
     // Find user
-    const [users] = await pool.query(
-      'SELECT * FROM Users WHERE email = ?',
+    const result = await pool.query(
+      'SELECT * FROM Users WHERE email = $1',
       [email]
     );
 
-    if (users.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid email or password' 
       });
     }
 
-    const user = users[0];
+    const user = result.rows[0];
 
     // Check password
     const isPasswordValid = await bcrypt.compare(password, user.password);

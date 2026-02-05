@@ -28,6 +28,7 @@ app.get('/', (req, res) => {
     success: true,
     message: 'WashTime API - Laundry Booking System',
     version: '1.0.0',
+    database: 'PostgreSQL (Render)',
     endpoints: {
       auth: {
         register: 'POST /api/auth/register',
@@ -82,7 +83,8 @@ const startServer = async () => {
     const dbConnected = await testConnection();
     
     if (!dbConnected) {
-      console.error('❌ Failed to connect to database. Please check your .env file and ensure MySQL is running.');
+      console.error('❌ Failed to connect to database. Please check your .env file.');
+      console.log('💡 Make sure DATABASE_URL is set correctly in .env');
       console.log('💡 Run "npm run init-db" to initialize the database first.');
       process.exit(1);
     }
@@ -90,6 +92,7 @@ const startServer = async () => {
     app.listen(PORT, () => {
       console.log(`\n🚀 WashTime API Server running on port ${PORT}`);
       console.log(`📍 Local: http://localhost:${PORT}`);
+      console.log(`🗄️  Database: PostgreSQL (Render)`);
       console.log(`📚 API Documentation: http://localhost:${PORT}/\n`);
     });
   } catch (error) {
