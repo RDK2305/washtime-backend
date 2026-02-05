@@ -2,22 +2,39 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 const initDatabase = async () => {
-  // Use individual connection parameters with SSL enabled
-  const pool = new Pool({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT || 5432,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    ssl: {
-      rejectUnauthorized: false  // Required for Render PostgreSQL
-    }
-  });
+  // Support both DATABASE_URL and individual parameters
+  let poolConfig;
+
+  if (process.env.DATABASE_URL) {
+    poolConfig = {
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    };
+  } else {
+    poolConfig = {
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT || 5432,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    };
+  }
+
+  const pool = new Pool(poolConfig);
 
   try {
     console.log('🔄 Connecting to PostgreSQL database...');
-    console.log(`📍 Host: ${process.env.DB_HOST}`);
-    console.log(`📍 Database: ${process.env.DB_NAME}`);
+    if (process.env.DATABASE_URL) {
+      console.log('📍 Using DATABASE_URL');
+    } else {
+      console.log(`📍 Host: ${process.env.DB_HOST}`);
+      console.log(`📍 Database: ${process.env.DB_NAME}`);
+    }
     console.log('🔒 SSL: Enabled');
     
     const client = await pool.connect();
@@ -113,12 +130,6 @@ const initDatabase = async () => {
     client.release();
   } catch (error) {
     console.error('❌ Database initialization failed:', error.message);
-    console.error('\nPlease verify your .env file has these values:');
-    console.error('  DB_HOST:', process.env.DB_HOST ? '✓' : '✗ MISSING');
-    console.error('  DB_PORT:', process.env.DB_PORT ? '✓' : '✗ MISSING');
-    console.error('  DB_USER:', process.env.DB_USER ? '✓' : '✗ MISSING');
-    console.error('  DB_PASSWORD:', process.env.DB_PASSWORD ? '✓' : '✗ MISSING');
-    console.error('  DB_NAME:', process.env.DB_NAME ? '✓' : '✗ MISSING');
     console.error('\nFull error:', error);
     process.exit(1);
   } finally {

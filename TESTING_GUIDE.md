@@ -100,9 +100,8 @@ Authorization: Bearer YOUR_TOKEN_HERE
       "machine_type": "Washer",
       "machine_number": "W1",
       "is_active": 1,
-      "created_at": "2025-02-02T..."
-    },
-    ...
+      "created_at": "2025-02-02T00:00:00Z"
+    }
   ]
 }
 ```
@@ -231,9 +230,14 @@ Content-Type: application/json
   "message": "Booking updated successfully",
   "booking": {
     "booking_id": 1,
+    "user_id": 1,
+    "machine_id": 1,
+    "booking_date": "2025-02-10",
     "start_time": "15:00:00",
     "end_time": "16:30:00",
-    ...
+    "status": "Booked",
+    "machine_type": "Washer",
+    "machine_number": "W1"
   }
 }
 ```

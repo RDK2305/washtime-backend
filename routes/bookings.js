@@ -15,19 +15,19 @@ const bookingValidation = [
 // GET /api/bookings - Get all bookings for logged-in user
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const [bookings] = await pool.query(
+    const result = await pool.query(
       `SELECT b.*, m.machine_type, m.machine_number 
        FROM Bookings b
        JOIN LaundryMachines m ON b.machine_id = m.machine_id
-       WHERE b.user_id = ?
+       WHERE b.user_id = $1
        ORDER BY b.booking_date DESC, b.start_time DESC`,
       [req.user.user_id]
     );
 
     res.json({
       success: true,
-      count: bookings.length,
-      bookings
+      count: result.rows.length,
+      bookings: result.rows
     });
   } catch (error) {
     console.error('Get bookings error:', error);
@@ -54,24 +54,24 @@ router.get('/available', authMiddleware, async (req, res) => {
       SELECT b.*, m.machine_type, m.machine_number 
       FROM Bookings b
       JOIN LaundryMachines m ON b.machine_id = m.machine_id
-      WHERE b.booking_date = ? AND b.status = 'Booked'
+      WHERE b.booking_date = $1 AND b.status = 'Booked'
     `;
     const params = [date];
 
     if (machine_id) {
-      query += ' AND b.machine_id = ?';
+      query += ' AND b.machine_id = $2';
       params.push(machine_id);
     }
 
     query += ' ORDER BY b.start_time';
 
-    const [bookedSlots] = await pool.query(query, params);
+    const result = await pool.query(query, params);
 
     res.json({
       success: true,
       date,
       machine_id: machine_id || 'all',
-      booked_slots: bookedSlots
+      booked_slots: result.rows
     });
   } catch (error) {
     console.error('Get available slots error:', error);
@@ -85,15 +85,15 @@ router.get('/available', authMiddleware, async (req, res) => {
 // GET /api/bookings/:id - Get single booking
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const [bookings] = await pool.query(
+    const result = await pool.query(
       `SELECT b.*, m.machine_type, m.machine_number 
        FROM Bookings b
        JOIN LaundryMachines m ON b.machine_id = m.machine_id
-       WHERE b.booking_id = ? AND b.user_id = ?`,
+       WHERE b.booking_id = $1 AND b.user_id = $2`,
       [req.params.id, req.user.user_id]
     );
 
-    if (bookings.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ 
         success: false, 
         message: 'Booking not found or access denied' 
@@ -102,7 +102,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
     res.json({
       success: true,
-      booking: bookings[0]
+      booking: result.rows[0]
     });
   } catch (error) {
     console.error('Get booking error:', error);
@@ -135,12 +135,12 @@ router.post('/', authMiddleware, bookingValidation, async (req, res) => {
     }
 
     // Check if machine exists and is active
-    const [machines] = await pool.query(
-      'SELECT * FROM LaundryMachines WHERE machine_id = ? AND is_active = TRUE',
+    const machineResult = await pool.query(
+      'SELECT * FROM LaundryMachines WHERE machine_id = $1 AND is_active = TRUE',
       [machine_id]
     );
 
-    if (machines.length === 0) {
+    if (machineResult.rows.length === 0) {
       return res.status(404).json({ 
         success: false, 
         message: 'Machine not found or inactive' 
@@ -148,20 +148,20 @@ router.post('/', authMiddleware, bookingValidation, async (req, res) => {
     }
 
     // Check for overlapping bookings
-    const [overlapping] = await pool.query(
+    const overlapResult = await pool.query(
       `SELECT * FROM Bookings 
-       WHERE machine_id = ? 
-       AND booking_date = ? 
+       WHERE machine_id = $1 
+       AND booking_date = $2 
        AND status = 'Booked'
        AND (
-         (start_time < ? AND end_time > ?) OR
-         (start_time < ? AND end_time > ?) OR
-         (start_time >= ? AND end_time <= ?)
+         (start_time < $3 AND end_time > $4) OR
+         (start_time < $5 AND end_time > $6) OR
+         (start_time >= $7 AND end_time <= $8)
        )`,
       [machine_id, booking_date, end_time, start_time, end_time, start_time, start_time, end_time]
     );
 
-    if (overlapping.length > 0) {
+    if (overlapResult.rows.length > 0) {
       return res.status(409).json({ 
         success: false, 
         message: 'This time slot overlaps with an existing booking' 
@@ -169,24 +169,24 @@ router.post('/', authMiddleware, bookingValidation, async (req, res) => {
     }
 
     // Create booking
-    const [result] = await pool.query(
-      'INSERT INTO Bookings (user_id, machine_id, booking_date, start_time, end_time) VALUES (?, ?, ?, ?, ?)',
+    const insertResult = await pool.query(
+      'INSERT INTO Bookings (user_id, machine_id, booking_date, start_time, end_time) VALUES ($1, $2, $3, $4, $5) RETURNING booking_id',
       [req.user.user_id, machine_id, booking_date, start_time, end_time]
     );
 
     // Get created booking with machine details
-    const [newBooking] = await pool.query(
+    const newBookingResult = await pool.query(
       `SELECT b.*, m.machine_type, m.machine_number 
        FROM Bookings b
        JOIN LaundryMachines m ON b.machine_id = m.machine_id
-       WHERE b.booking_id = ?`,
-      [result.insertId]
+       WHERE b.booking_id = $1`,
+      [insertResult.rows[0].booking_id]
     );
 
     res.status(201).json({
       success: true,
       message: 'Booking created successfully',
-      booking: newBooking[0]
+      booking: newBookingResult.rows[0]
     });
   } catch (error) {
     console.error('Create booking error:', error);
@@ -204,19 +204,19 @@ router.put('/:id', authMiddleware, async (req, res) => {
     const { machine_id, booking_date, start_time, end_time } = req.body;
 
     // Check if booking exists and belongs to user
-    const [bookings] = await pool.query(
-      'SELECT * FROM Bookings WHERE booking_id = ? AND user_id = ?',
+    const bookingResult = await pool.query(
+      'SELECT * FROM Bookings WHERE booking_id = $1 AND user_id = $2',
       [id, req.user.user_id]
     );
 
-    if (bookings.length === 0) {
+    if (bookingResult.rows.length === 0) {
       return res.status(404).json({ 
         success: false, 
         message: 'Booking not found or access denied' 
       });
     }
 
-    const booking = bookings[0];
+    const booking = bookingResult.rows[0];
 
     // Check if booking is in the past
     const now = new Date();
@@ -232,21 +232,22 @@ router.put('/:id', authMiddleware, async (req, res) => {
     // Build update query
     const updates = [];
     const values = [];
+    let paramCount = 1;
 
     if (machine_id) {
-      updates.push('machine_id = ?');
+      updates.push(`machine_id = $${paramCount++}`);
       values.push(machine_id);
     }
     if (booking_date) {
-      updates.push('booking_date = ?');
+      updates.push(`booking_date = $${paramCount++}`);
       values.push(booking_date);
     }
     if (start_time) {
-      updates.push('start_time = ?');
+      updates.push(`start_time = $${paramCount++}`);
       values.push(start_time);
     }
     if (end_time) {
-      updates.push('end_time = ?');
+      updates.push(`end_time = $${paramCount++}`);
       values.push(end_time);
     }
 
@@ -263,21 +264,21 @@ router.put('/:id', authMiddleware, async (req, res) => {
     const checkStartTime = start_time || booking.start_time;
     const checkEndTime = end_time || booking.end_time;
 
-    const [overlapping] = await pool.query(
+    const overlapResult = await pool.query(
       `SELECT * FROM Bookings 
-       WHERE machine_id = ? 
-       AND booking_date = ? 
+       WHERE machine_id = $1 
+       AND booking_date = $2 
        AND status = 'Booked'
-       AND booking_id != ?
+       AND booking_id != $3
        AND (
-         (start_time < ? AND end_time > ?) OR
-         (start_time < ? AND end_time > ?) OR
-         (start_time >= ? AND end_time <= ?)
+         (start_time < $4 AND end_time > $5) OR
+         (start_time < $6 AND end_time > $7) OR
+         (start_time >= $8 AND end_time <= $9)
        )`,
       [checkMachineId, checkDate, id, checkEndTime, checkStartTime, checkEndTime, checkStartTime, checkStartTime, checkEndTime]
     );
 
-    if (overlapping.length > 0) {
+    if (overlapResult.rows.length > 0) {
       return res.status(409).json({ 
         success: false, 
         message: 'Updated time slot overlaps with an existing booking' 
@@ -287,23 +288,23 @@ router.put('/:id', authMiddleware, async (req, res) => {
     values.push(id);
 
     await pool.query(
-      `UPDATE Bookings SET ${updates.join(', ')} WHERE booking_id = ?`,
+      `UPDATE Bookings SET ${updates.join(', ')} WHERE booking_id = $${paramCount}`,
       values
     );
 
     // Get updated booking
-    const [updatedBooking] = await pool.query(
+    const updatedResult = await pool.query(
       `SELECT b.*, m.machine_type, m.machine_number 
        FROM Bookings b
        JOIN LaundryMachines m ON b.machine_id = m.machine_id
-       WHERE b.booking_id = ?`,
+       WHERE b.booking_id = $1`,
       [id]
     );
 
     res.json({
       success: true,
       message: 'Booking updated successfully',
-      booking: updatedBooking[0]
+      booking: updatedResult.rows[0]
     });
   } catch (error) {
     console.error('Update booking error:', error);
@@ -320,12 +321,12 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params;
 
     // Check if booking exists and belongs to user
-    const [bookings] = await pool.query(
-      'SELECT * FROM Bookings WHERE booking_id = ? AND user_id = ?',
+    const result = await pool.query(
+      'SELECT * FROM Bookings WHERE booking_id = $1 AND user_id = $2',
       [id, req.user.user_id]
     );
 
-    if (bookings.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ 
         success: false, 
         message: 'Booking not found or access denied' 
@@ -334,7 +335,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
     // Update status to Cancelled instead of deleting
     await pool.query(
-      'UPDATE Bookings SET status = ? WHERE booking_id = ?',
+      'UPDATE Bookings SET status = $1 WHERE booking_id = $2',
       ['Cancelled', id]
     );
 

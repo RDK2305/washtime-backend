@@ -1,20 +1,39 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Create PostgreSQL connection pool with SSL enabled
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: {
-    rejectUnauthorized: false  // Required for Render PostgreSQL
-  },
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-});
+// Create PostgreSQL connection pool
+// Support both DATABASE_URL and individual parameters
+let poolConfig;
+
+if (process.env.DATABASE_URL) {
+  // Use connection string (for Render deployment)
+  poolConfig = {
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  };
+} else {
+  // Use individual parameters (for local development)
+  poolConfig = {
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT || 5432,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    ssl: {
+      rejectUnauthorized: false
+    },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  };
+}
+
+const pool = new Pool(poolConfig);
 
 // Test database connection
 const testConnection = async () => {
@@ -27,12 +46,12 @@ const testConnection = async () => {
     return true;
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
-    console.error('\nPlease check your .env file:');
-    console.error('  DB_HOST:', process.env.DB_HOST ? '✓' : '✗ MISSING');
-    console.error('  DB_PORT:', process.env.DB_PORT ? '✓' : '✗ MISSING');
-    console.error('  DB_USER:', process.env.DB_USER ? '✓' : '✗ MISSING');
-    console.error('  DB_PASSWORD:', process.env.DB_PASSWORD ? '✓' : '✗ MISSING');
-    console.error('  DB_NAME:', process.env.DB_NAME ? '✓' : '✗ MISSING');
+    if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+      console.error('\n⚠️  No database configuration found!');
+      console.error('Please set either:');
+      console.error('  - DATABASE_URL environment variable, OR');
+      console.error('  - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME variables');
+    }
     return false;
   }
 };

@@ -7,14 +7,14 @@ const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 // GET /api/machines - Get all laundry machines
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const [machines] = await pool.query(
+    const result = await pool.query(
       'SELECT * FROM LaundryMachines ORDER BY machine_type, machine_number'
     );
 
     res.json({
       success: true,
-      count: machines.length,
-      machines
+      count: result.rows.length,
+      machines: result.rows
     });
   } catch (error) {
     console.error('Get machines error:', error);
@@ -28,12 +28,12 @@ router.get('/', authMiddleware, async (req, res) => {
 // GET /api/machines/:id - Get single machine
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const [machines] = await pool.query(
-      'SELECT * FROM LaundryMachines WHERE machine_id = ?',
+    const result = await pool.query(
+      'SELECT * FROM LaundryMachines WHERE machine_id = $1',
       [req.params.id]
     );
 
-    if (machines.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ 
         success: false, 
         message: 'Machine not found' 
@@ -42,7 +42,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 
     res.json({
       success: true,
-      machine: machines[0]
+      machine: result.rows[0]
     });
   } catch (error) {
     console.error('Get machine error:', error);
@@ -73,20 +73,15 @@ router.post('/',
 
       const { machine_type, machine_number, is_active } = req.body;
 
-      const [result] = await pool.query(
-        'INSERT INTO LaundryMachines (machine_type, machine_number, is_active) VALUES (?, ?, ?)',
+      const result = await pool.query(
+        'INSERT INTO LaundryMachines (machine_type, machine_number, is_active) VALUES ($1, $2, $3) RETURNING *',
         [machine_type, machine_number, is_active !== undefined ? is_active : true]
       );
 
       res.status(201).json({
         success: true,
         message: 'Machine added successfully',
-        machine: {
-          machine_id: result.insertId,
-          machine_type,
-          machine_number,
-          is_active: is_active !== undefined ? is_active : true
-        }
+        machine: result.rows[0]
       });
     } catch (error) {
       console.error('Add machine error:', error);
@@ -108,12 +103,12 @@ router.put('/:id',
       const { id } = req.params;
 
       // Check if machine exists
-      const [machines] = await pool.query(
-        'SELECT * FROM LaundryMachines WHERE machine_id = ?',
+      const checkResult = await pool.query(
+        'SELECT * FROM LaundryMachines WHERE machine_id = $1',
         [id]
       );
 
-      if (machines.length === 0) {
+      if (checkResult.rows.length === 0) {
         return res.status(404).json({ 
           success: false, 
           message: 'Machine not found' 
@@ -123,17 +118,18 @@ router.put('/:id',
       // Build update query dynamically
       const updates = [];
       const values = [];
+      let paramCount = 1;
 
       if (machine_type) {
-        updates.push('machine_type = ?');
+        updates.push(`machine_type = $${paramCount++}`);
         values.push(machine_type);
       }
       if (machine_number) {
-        updates.push('machine_number = ?');
+        updates.push(`machine_number = $${paramCount++}`);
         values.push(machine_number);
       }
       if (is_active !== undefined) {
-        updates.push('is_active = ?');
+        updates.push(`is_active = $${paramCount++}`);
         values.push(is_active);
       }
 
@@ -147,20 +143,20 @@ router.put('/:id',
       values.push(id);
 
       await pool.query(
-        `UPDATE LaundryMachines SET ${updates.join(', ')} WHERE machine_id = ?`,
+        `UPDATE LaundryMachines SET ${updates.join(', ')} WHERE machine_id = $${paramCount}`,
         values
       );
 
       // Get updated machine
-      const [updatedMachine] = await pool.query(
-        'SELECT * FROM LaundryMachines WHERE machine_id = ?',
+      const updatedResult = await pool.query(
+        'SELECT * FROM LaundryMachines WHERE machine_id = $1',
         [id]
       );
 
       res.json({
         success: true,
         message: 'Machine updated successfully',
-        machine: updatedMachine[0]
+        machine: updatedResult.rows[0]
       });
     } catch (error) {
       console.error('Update machine error:', error);
@@ -181,19 +177,19 @@ router.delete('/:id',
       const { id } = req.params;
 
       // Check if machine exists
-      const [machines] = await pool.query(
-        'SELECT * FROM LaundryMachines WHERE machine_id = ?',
+      const result = await pool.query(
+        'SELECT * FROM LaundryMachines WHERE machine_id = $1',
         [id]
       );
 
-      if (machines.length === 0) {
+      if (result.rows.length === 0) {
         return res.status(404).json({ 
           success: false, 
           message: 'Machine not found' 
         });
       }
 
-      await pool.query('DELETE FROM LaundryMachines WHERE machine_id = ?', [id]);
+      await pool.query('DELETE FROM LaundryMachines WHERE machine_id = $1', [id]);
 
       res.json({
         success: true,
