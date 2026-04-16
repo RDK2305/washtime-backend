@@ -70,22 +70,17 @@ app.use((err, req, res, next) => {
 
 // ── Start server ──────────────────────────────────────────────────────────────
 async function startServer() {
-  try {
-    const dbConnected = await testConnection();
+  // Start listening first so Render can detect the open port
+  app.listen(PORT, () => {
+    console.log(`\nWashTime API running on port ${PORT}`);
+    console.log(`Local: http://localhost:${PORT}`);
+    console.log(`Database: PostgreSQL (Render)\n`);
+  });
 
-    if (!dbConnected) {
-      console.error('Failed to connect to database. Check your .env file.');
-      process.exit(1);
-    }
-
-    app.listen(PORT, () => {
-      console.log(`\nWashTime API running on port ${PORT}`);
-      console.log(`Local: http://localhost:${PORT}`);
-      console.log(`Database: PostgreSQL (Render)\n`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+  // Test DB connection after the port is open
+  const dbConnected = await testConnection();
+  if (!dbConnected) {
+    console.error('Database connection failed — check environment variables.');
   }
 }
 

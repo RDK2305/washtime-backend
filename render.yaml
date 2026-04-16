@@ -9,15 +9,7 @@ services:
         value: production
       - key: PORT
         value: 3000
-      - key: DB_HOST
-        sync: false
-      - key: DB_PORT
-        value: 5432
-      - key: DB_USER
-        sync: false
-      - key: DB_PASSWORD
-        sync: false
-      - key: DB_NAME
-        sync: false
+      - key: DATABASE_URL
+        value: postgresql://washtime_db_t5c1_user:nAFU92hqxSFQx74CvEIwCRXJrpWVUd4x@dpg-d61vaou3jp1c73eoqi80-a.oregon-postgres.render.com/washtime_db_t5c1
       - key: JWT_SECRET
-        sync: false
+        value: WashTime@2026SecureKey$RDK2305!JWT_prod
