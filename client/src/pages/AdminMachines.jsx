@@ -12,6 +12,7 @@ export default function AdminMachines() {
   const [form, setForm]           = useState({ machine_type: 'Washer', machine_number: '' })
   const [formError, setFormError] = useState('')
   const [toast, setToast]         = useState('')
+  const [busy, setBusy]           = useState(null)  // tracks which machine_id is in-flight
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -22,7 +23,7 @@ export default function AdminMachines() {
     setTimeout(() => setToast(''), 2800)
   }
 
-  function handleAdd(e) {
+  async function handleAdd(e) {
     e.preventDefault()
     setFormError('')
 
@@ -34,34 +35,53 @@ export default function AdminMachines() {
       return setFormError(`${form.machine_type} ${num} already exists.`)
     }
 
-    addMachine(form.machine_type, num)
-    setForm({ machine_type: 'Washer', machine_number: '' })
-    setShowForm(false)
-    showToast(`${form.machine_type} ${num} added successfully.`)
+    try {
+      await addMachine(form.machine_type, num)
+      setForm({ machine_type: 'Washer', machine_number: '' })
+      setShowForm(false)
+      showToast(`${form.machine_type} ${num} added successfully.`)
+    } catch (err) {
+      setFormError(err.message)
+    }
   }
 
-  function handleToggle(machine) {
-    toggleMachine(machine.machine_id)
-    showToast(
-      `${machine.machine_type} ${machine.machine_number} is now ${
-        machine.is_active ? 'offline' : 'active'
-      }.`
-    )
+  async function handleToggle(machine) {
+    setBusy(machine.machine_id)
+    try {
+      await toggleMachine(machine)
+      showToast(
+        `${machine.machine_type} ${machine.machine_number} is now ${
+          machine.is_active ? 'offline' : 'active'
+        }.`
+      )
+    } catch (err) {
+      showToast(`Error: ${err.message}`)
+    } finally {
+      setBusy(null)
+    }
   }
 
-  function handleDelete(machine) {
+  async function handleDelete(machine) {
     if (
       !window.confirm(
         `Delete ${machine.machine_type} ${machine.machine_number}? This cannot be undone.`
       )
     )
       return
-    deleteMachine(machine.machine_id)
-    showToast(`${machine.machine_type} ${machine.machine_number} deleted.`)
+
+    setBusy(machine.machine_id)
+    try {
+      await deleteMachine(machine.machine_id)
+      showToast(`${machine.machine_type} ${machine.machine_number} deleted.`)
+    } catch (err) {
+      showToast(`Error: ${err.message}`)
+    } finally {
+      setBusy(null)
+    }
   }
 
-  const activeCount   = machines.filter((m) => m.is_active).length
-  const offlineCount  = machines.filter((m) => !m.is_active).length
+  const activeCount  = machines.filter((m) => m.is_active).length
+  const offlineCount = machines.filter((m) => !m.is_active).length
 
   return (
     <div>
@@ -174,12 +194,12 @@ export default function AdminMachines() {
                   <td>{m.machine_type}</td>
                   <td>{m.machine_number}</td>
                   <td>
-                    {/* Toggle switch — demonstrates controlled form input */}
                     <label className="toggle" title="Toggle active status">
                       <input
                         type="checkbox"
                         checked={m.is_active}
                         onChange={() => handleToggle(m)}
+                        disabled={busy === m.machine_id}
                       />
                       <span className="toggle-track" />
                       <span className="toggle-thumb" />
@@ -189,6 +209,7 @@ export default function AdminMachines() {
                     <button
                       className="btn btn-danger btn-sm"
                       onClick={() => handleDelete(m)}
+                      disabled={busy === m.machine_id}
                     >
                       Delete
                     </button>

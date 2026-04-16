@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 function getMachineIcon(type) {
@@ -26,7 +27,8 @@ function greeting() {
 }
 
 export default function Dashboard() {
-  const { currentUser, machines, myBookings, navigate } = useApp()
+  const { currentUser, machines, myBookings } = useApp()
+  const navigate = useNavigate()
 
   const today       = new Date().toISOString().split('T')[0]
   const active      = myBookings.filter((b) => b.status === 'Booked')
@@ -69,7 +71,7 @@ export default function Dashboard() {
       <div className="card mb-2">
         <div className="card-header">
           <h2 className="card-title">Machine Status</h2>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate('book')}>
+          <button className="btn btn-primary btn-sm" onClick={() => navigate('/book')}>
             + Book a Slot
           </button>
         </div>
@@ -108,7 +110,7 @@ export default function Dashboard() {
           <h2 className="card-title">Today's Schedule</h2>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => navigate('myBookings')}
+            onClick={() => navigate('/my-bookings')}
           >
             View All
           </button>
@@ -121,7 +123,7 @@ export default function Dashboard() {
             <div className="empty-desc">
               You have no laundry scheduled for today.
             </div>
-            <button className="btn btn-primary" onClick={() => navigate('book')}>
+            <button className="btn btn-primary" onClick={() => navigate('/book')}>
               Book a Slot Now
             </button>
           </div>

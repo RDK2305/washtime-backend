@@ -1,3 +1,4 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppProvider, useApp } from './context/AppContext'
 import Navbar        from './components/Navbar'
 import Login         from './pages/Login'
@@ -7,38 +8,65 @@ import BookSlot      from './pages/BookSlot'
 import MyBookings    from './pages/MyBookings'
 import AdminMachines from './pages/AdminMachines'
 
-// ── Router: state-based page switching (no external router library) ──────────
-function Router() {
-  const { view, currentUser, isAdmin } = useApp()
-
-  // Guard: unauthenticated users only see login / register
-  if (!currentUser) {
-    if (view === 'register') return <Register />
-    return <Login />
-  }
-
-  // Guard: non-admins cannot reach the admin page
-  if (view === 'adminMachines' && !isAdmin) return <Dashboard />
-
-  switch (view) {
-    case 'dashboard':     return <Dashboard />
-    case 'book':          return <BookSlot />
-    case 'myBookings':    return <MyBookings />
-    case 'adminMachines': return <AdminMachines />
-    default:              return <Dashboard />
-  }
+// Redirect to /login if not logged in
+function ProtectedRoute({ children }) {
+  const { currentUser } = useApp()
+  if (!currentUser) return <Navigate to="/login" replace />
+  return children
 }
 
-// ── Root ─────────────────────────────────────────────────────────────────────
+// Redirect non-admin users away from admin pages
+function AdminRoute({ children }) {
+  const { currentUser, isAdmin } = useApp()
+  if (!currentUser) return <Navigate to="/login" replace />
+  if (!isAdmin)     return <Navigate to="/dashboard" replace />
+  return children
+}
+
+// Redirect already-logged-in users away from /login and /register
+function PublicRoute({ children }) {
+  const { currentUser } = useApp()
+  if (currentUser) return <Navigate to="/dashboard" replace />
+  return children
+}
+
+// ── Route tree ────────────────────────────────────────────────────────────────
+function AppRoutes() {
+  return (
+    <>
+      <Navbar />
+      <div className="page-wrap">
+        <Routes>
+          <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/book"      element={<ProtectedRoute><BookSlot /></ProtectedRoute>} />
+          <Route path="/my-bookings" element={<ProtectedRoute><MyBookings /></ProtectedRoute>} />
+
+          <Route
+            path="/admin/machines"
+            element={<AdminRoute><AdminMachines /></AdminRoute>}
+          />
+
+          {/* Default redirects */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </div>
+    </>
+  )
+}
+
+// ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <AppProvider>
-      <div className="layout">
-        <Navbar />
-        <div className="page-wrap">
-          <Router />
+      <BrowserRouter>
+        <div className="layout">
+          <AppRoutes />
         </div>
-      </div>
+      </BrowserRouter>
     </AppProvider>
   )
 }

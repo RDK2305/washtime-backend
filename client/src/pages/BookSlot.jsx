@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import TimeSlotGrid, { computeEndTime, toMins, isTaken, HOURS } from '../components/TimeSlotGrid'
+import { apiGetAvailableSlots } from '../api'
 
 function getMachineIcon(type) {
   return type === 'Washer' ? '🫧' : '🌀'
@@ -20,21 +22,45 @@ function fmtLong(dateStr) {
 }
 
 export default function BookSlot() {
-  const { machines, navigate, createBooking, getBookedSlots } = useApp()
+  const { machines, createBooking } = useApp()
+  const navigate = useNavigate()
 
   const [step, setStep]               = useState(1)
   const [selectedMachine, setMachine] = useState(null)
   const [selectedDate, setDate]       = useState(new Date().toISOString().split('T')[0])
   const [startTime, setStart]         = useState(null)
   const [endTime, setEnd]             = useState(null)
+  const [bookedSlots, setBookedSlots] = useState([])
   const [slotError, setSlotError]     = useState('')
   const [submitError, setSubmitError] = useState('')
+  const [submitting, setSubmitting]   = useState(false)
   const [success, setSuccess]         = useState(false)
 
   const activeMachines = machines.filter((m) => m.is_active)
-  const bookedSlots    = selectedMachine
-    ? getBookedSlots(selectedMachine.machine_id, selectedDate)
-    : []
+
+  // Fetch taken slots from API whenever machine or date changes
+  useEffect(() => {
+    if (!selectedMachine) {
+      setBookedSlots([])
+      return
+    }
+    async function fetchSlots() {
+      try {
+        const data = await apiGetAvailableSlots(selectedMachine.machine_id, selectedDate)
+        const raw = data.booked_slots || []
+        // Normalize times (PostgreSQL returns HH:MM:SS)
+        const normalized = raw.map((b) => ({
+          ...b,
+          start_time: b.start_time ? b.start_time.substring(0, 5) : b.start_time,
+          end_time:   b.end_time   ? b.end_time.substring(0, 5)   : b.end_time,
+        }))
+        setBookedSlots(normalized)
+      } catch {
+        setBookedSlots([])
+      }
+    }
+    fetchSlots()
+  }, [selectedMachine, selectedDate])
 
   // ── Step 1: machine selection ──────────────────────────────────────────────
   function pickMachine(machine) {
@@ -58,28 +84,24 @@ export default function BookSlot() {
   function handleSlotClick(slot) {
     setSlotError('')
 
-    // No start yet → set start
     if (!startTime) {
       setStart(slot)
       setEnd(null)
       return
     }
 
-    // Clicking same slot → deselect
     if (slot === startTime) {
       setStart(null)
       setEnd(null)
       return
     }
 
-    // Clicked before start → reset start
     if (toMins(slot) < toMins(startTime)) {
       setStart(slot)
       setEnd(null)
       return
     }
 
-    // Validate no taken slots in range [start … end] inclusive
     const range = HOURS.filter(
       (s) => toMins(s) >= toMins(startTime) && toMins(s) <= toMins(slot)
     )
@@ -93,10 +115,11 @@ export default function BookSlot() {
   }
 
   // ── Step 3: confirm booking ────────────────────────────────────────────────
-  function handleConfirm() {
+  async function handleConfirm() {
     setSubmitError('')
+    setSubmitting(true)
     try {
-      createBooking({
+      await createBooking({
         machine_id:   selectedMachine.machine_id,
         booking_date: selectedDate,
         start_time:   startTime,
@@ -106,6 +129,8 @@ export default function BookSlot() {
     } catch (err) {
       setSubmitError(err.message)
       setStep(2)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -132,7 +157,7 @@ export default function BookSlot() {
               }}>
                 Book Another
               </button>
-              <button className="btn btn-primary" onClick={() => navigate('myBookings')}>
+              <button className="btn btn-primary" onClick={() => navigate('/my-bookings')}>
                 View My Bookings
               </button>
             </div>
@@ -290,8 +315,19 @@ export default function BookSlot() {
               >
                 ← Go Back
               </button>
-              <button className="btn btn-primary" onClick={handleConfirm}>
-                ✓ Confirm Booking
+              <button
+                className="btn btn-primary"
+                onClick={handleConfirm}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <span className="spinner spinner-white" />
+                    Booking…
+                  </>
+                ) : (
+                  '✓ Confirm Booking'
+                )}
               </button>
             </div>
           </div>

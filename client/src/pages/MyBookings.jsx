@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 function getMachineIcon(type) {
@@ -20,8 +21,10 @@ function fmtDate(d) {
 }
 
 export default function MyBookings() {
-  const { myBookings, cancelBooking, navigate } = useApp()
-  const [filter, setFilter]   = useState('All')
+  const { myBookings, cancelBooking } = useApp()
+  const navigate = useNavigate()
+
+  const [filter, setFilter]     = useState('All')
   const [cancelling, setCancelling] = useState(null)
 
   const counts = {
@@ -33,13 +36,16 @@ export default function MyBookings() {
   const displayed =
     filter === 'All' ? myBookings : myBookings.filter((b) => b.status === filter)
 
-  function handleCancel(id) {
+  async function handleCancel(id) {
     if (!window.confirm('Cancel this booking?')) return
     setCancelling(id)
-    setTimeout(() => {
-      cancelBooking(id)
+    try {
+      await cancelBooking(id)
+    } catch (err) {
+      alert(err.message)
+    } finally {
       setCancelling(null)
-    }, 300)
+    }
   }
 
   return (
@@ -53,7 +59,7 @@ export default function MyBookings() {
           <h1 className="page-title">My Bookings</h1>
           <p className="page-subtitle">Manage all your laundry slot reservations.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('book')}>
+        <button className="btn btn-primary" onClick={() => navigate('/book')}>
           + New Booking
         </button>
       </div>
@@ -83,7 +89,7 @@ export default function MyBookings() {
                 : `No ${filter.toLowerCase()} bookings.`}
             </div>
             {filter === 'All' && (
-              <button className="btn btn-primary" onClick={() => navigate('book')}>
+              <button className="btn btn-primary" onClick={() => navigate('/book')}>
                 Book Your First Slot
               </button>
             )}

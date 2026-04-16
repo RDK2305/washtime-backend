@@ -1,178 +1,132 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { INITIAL_MACHINES, INITIAL_USERS, STORAGE_KEYS } from '../data/mockData'
+import {
+  apiLogin,
+  apiRegister,
+  apiGetMachines,
+  apiAddMachine,
+  apiUpdateMachine,
+  apiDeleteMachine,
+  apiGetBookings,
+  apiCreateBooking,
+  apiCancelBooking,
+} from '../api'
 
 const AppContext = createContext(null)
 
-// ─── localStorage helpers ────────────────────────────────────────────────────
-
-function load(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : fallback
-  } catch {
-    return fallback
+// Normalize a booking row coming from the database.
+// PostgreSQL returns dates as ISO timestamps and times as HH:MM:SS — strip them down.
+function normalizeBooking(b) {
+  return {
+    ...b,
+    booking_date: b.booking_date
+      ? String(b.booking_date).split('T')[0]
+      : b.booking_date,
+    start_time: b.start_time ? b.start_time.substring(0, 5) : b.start_time,
+    end_time:   b.end_time   ? b.end_time.substring(0, 5)   : b.end_time,
   }
-}
-
-function save(key, value) {
-  localStorage.setItem(key, JSON.stringify(value))
-}
-
-// Ensure seed data exists on first visit
-function initStorage() {
-  if (!localStorage.getItem(STORAGE_KEYS.USERS))    save(STORAGE_KEYS.USERS,    INITIAL_USERS)
-  if (!localStorage.getItem(STORAGE_KEYS.MACHINES)) save(STORAGE_KEYS.MACHINES, INITIAL_MACHINES)
-  if (!localStorage.getItem(STORAGE_KEYS.BOOKINGS)) save(STORAGE_KEYS.BOOKINGS, [])
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }) {
-  initStorage()
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('wt_session')
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
 
-  const [view, setView]         = useState('login')
-  const [currentUser, setCurrentUser] = useState(() => load(STORAGE_KEYS.SESSION, null))
-  const [machines, setMachinesState]  = useState(() => load(STORAGE_KEYS.MACHINES, INITIAL_MACHINES))
-  const [bookings, setBookingsState]  = useState(() => load(STORAGE_KEYS.BOOKINGS, []))
+  const [machines, setMachines] = useState([])
+  const [bookings, setBookings] = useState([])
 
-  // Persist machines & bookings whenever they change
-  useEffect(() => { save(STORAGE_KEYS.MACHINES, machines) }, [machines])
-  useEffect(() => { save(STORAGE_KEYS.BOOKINGS, bookings) }, [bookings])
+  // ── Load machines and bookings whenever a user is logged in ─────────────────
 
-  // Redirect to dashboard if already logged in
+  const loadMachines = useCallback(async () => {
+    try {
+      const data = await apiGetMachines()
+      setMachines(data.machines || [])
+    } catch {
+      // token may have expired; leave the existing list in place
+    }
+  }, [])
+
+  const loadBookings = useCallback(async () => {
+    try {
+      const data = await apiGetBookings()
+      const normalized = (data.bookings || []).map(normalizeBooking)
+      setBookings(normalized)
+    } catch {
+      // silent
+    }
+  }, [])
+
   useEffect(() => {
-    if (currentUser) setView('dashboard')
+    if (currentUser) {
+      loadMachines()
+      loadBookings()
+    } else {
+      setMachines([])
+      setBookings([])
+    }
+  }, [currentUser, loadMachines, loadBookings])
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+
+  const login = useCallback(async (email, password) => {
+    const data = await apiLogin(email, password)
+    localStorage.setItem('wt_token', data.token)
+    localStorage.setItem('wt_session', JSON.stringify(data.user))
+    setCurrentUser(data.user)
   }, [])
 
-  // ── Navigation ─────────────────────────────────────────────────────────────
-  const navigate = useCallback((target) => setView(target), [])
-
-  // ── Auth ───────────────────────────────────────────────────────────────────
-  const login = useCallback((email, password) => {
-    const users = load(STORAGE_KEYS.USERS, [])
-    const found = users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    )
-    if (!found) throw new Error('Invalid email or password.')
-    const { password: _, ...safeUser } = found
-    save(STORAGE_KEYS.SESSION, safeUser)
-    setCurrentUser(safeUser)
-    setView('dashboard')
-  }, [])
-
-  const register = useCallback((name, email, password, role) => {
-    const users = load(STORAGE_KEYS.USERS, [])
-    if (users.find((u) => u.email.toLowerCase() === email.toLowerCase())) {
-      throw new Error('An account with this email already exists.')
-    }
-    const newUser = {
-      user_id: Date.now(),
-      name,
-      email,
-      password,
-      role: role || 'Resident',
-    }
-    const updated = [...users, newUser]
-    save(STORAGE_KEYS.USERS, updated)
-    const { password: _, ...safeUser } = newUser
-    save(STORAGE_KEYS.SESSION, safeUser)
-    setCurrentUser(safeUser)
-    setView('dashboard')
+  const register = useCallback(async (name, email, password, role) => {
+    await apiRegister(name, email, password, role)
+    // Registration succeeds — caller should redirect to /login
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEYS.SESSION)
+    localStorage.removeItem('wt_token')
+    localStorage.removeItem('wt_session')
     setCurrentUser(null)
-    setView('login')
   }, [])
 
-  // ── Machines (Admin) ───────────────────────────────────────────────────────
-  const addMachine = useCallback((machine_type, machine_number) => {
-    const newMachine = {
-      machine_id: Date.now(),
-      machine_type,
-      machine_number,
-      is_active: true,
-    }
-    setMachinesState((prev) => [...prev, newMachine])
-  }, [])
+  // ── Machines ────────────────────────────────────────────────────────────────
 
-  const toggleMachine = useCallback((machine_id) => {
-    setMachinesState((prev) =>
-      prev.map((m) =>
-        m.machine_id === machine_id ? { ...m, is_active: !m.is_active } : m
-      )
-    )
-  }, [])
+  const addMachine = useCallback(async (machine_type, machine_number) => {
+    await apiAddMachine(machine_type, machine_number)
+    await loadMachines()
+  }, [loadMachines])
 
-  const deleteMachine = useCallback((machine_id) => {
-    setMachinesState((prev) => prev.filter((m) => m.machine_id !== machine_id))
-  }, [])
+  const toggleMachine = useCallback(async (machine) => {
+    await apiUpdateMachine(machine.machine_id, { is_active: !machine.is_active })
+    await loadMachines()
+  }, [loadMachines])
 
-  // ── Bookings ───────────────────────────────────────────────────────────────
-  const createBooking = useCallback(
-    ({ machine_id, booking_date, start_time, end_time }) => {
-      const machine = machines.find((m) => m.machine_id === machine_id)
-      if (!machine || !machine.is_active)
-        throw new Error('Machine not found or offline.')
+  const deleteMachine = useCallback(async (machine_id) => {
+    await apiDeleteMachine(machine_id)
+    await loadMachines()
+  }, [loadMachines])
 
-      // Check for time conflicts on the same machine + date
-      const conflict = bookings.find(
-        (b) =>
-          b.machine_id === machine_id &&
-          b.booking_date === booking_date &&
-          b.status === 'Booked' &&
-          b.start_time < end_time &&
-          b.end_time > start_time
-      )
-      if (conflict) throw new Error('This time slot overlaps with an existing booking.')
+  // ── Bookings ─────────────────────────────────────────────────────────────────
 
-      const newBooking = {
-        booking_id: Date.now(),
-        user_id: currentUser.user_id,
-        machine_id,
-        machine_type: machine.machine_type,
-        machine_number: machine.machine_number,
-        booking_date,
-        start_time,
-        end_time,
-        status: 'Booked',
-        created_at: new Date().toISOString(),
-      }
-      setBookingsState((prev) => [newBooking, ...prev])
-    },
-    [machines, bookings, currentUser]
-  )
+  const createBooking = useCallback(async ({ machine_id, booking_date, start_time, end_time }) => {
+    await apiCreateBooking(machine_id, booking_date, start_time, end_time)
+    await loadBookings()
+  }, [loadBookings])
 
-  const cancelBooking = useCallback((booking_id) => {
-    setBookingsState((prev) =>
-      prev.map((b) =>
-        b.booking_id === booking_id ? { ...b, status: 'Cancelled' } : b
-      )
-    )
-  }, [])
+  const cancelBooking = useCallback(async (booking_id) => {
+    await apiCancelBooking(booking_id)
+    await loadBookings()
+  }, [loadBookings])
 
-  // ── Derived data ───────────────────────────────────────────────────────────
-  const myBookings = currentUser
-    ? bookings.filter((b) => b.user_id === currentUser.user_id)
-    : []
-
-  const getBookedSlots = useCallback(
-    (machine_id, date) =>
-      bookings.filter(
-        (b) =>
-          b.machine_id === machine_id &&
-          b.booking_date === date &&
-          b.status === 'Booked'
-      ),
-    [bookings]
-  )
+  // myBookings == all bookings (API already filters by logged-in user)
+  const myBookings = bookings
 
   return (
     <AppContext.Provider
       value={{
-        view,
-        navigate,
         currentUser,
         isAdmin: currentUser?.role === 'Admin',
         login,
@@ -186,7 +140,7 @@ export function AppProvider({ children }) {
         myBookings,
         createBooking,
         cancelBooking,
-        getBookedSlots,
+        refreshBookings: loadBookings,
       }}
     >
       {children}

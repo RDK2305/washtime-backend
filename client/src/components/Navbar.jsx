@@ -1,13 +1,21 @@
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function Navbar() {
-  const { view, navigate, currentUser, isAdmin, logout } = useApp()
+  const { currentUser, isAdmin, logout } = useApp()
+  const navigate   = useNavigate()
+  const { pathname } = useLocation()
 
   if (!currentUser) return null
 
+  function handleLogout() {
+    logout()
+    navigate('/login')
+  }
+
   return (
     <nav className="navbar">
-      <div className="navbar-brand" onClick={() => navigate('dashboard')}>
+      <div className="navbar-brand" onClick={() => navigate('/dashboard')}>
         <span className="brand-bubble">🫧</span>
         WashTime
       </div>
@@ -15,24 +23,24 @@ export default function Navbar() {
       <ul className="nav-links">
         <li>
           <button
-            className={view === 'dashboard' ? 'active' : ''}
-            onClick={() => navigate('dashboard')}
+            className={pathname === '/dashboard' ? 'active' : ''}
+            onClick={() => navigate('/dashboard')}
           >
             Dashboard
           </button>
         </li>
         <li>
           <button
-            className={view === 'book' ? 'active' : ''}
-            onClick={() => navigate('book')}
+            className={pathname === '/book' ? 'active' : ''}
+            onClick={() => navigate('/book')}
           >
             Book a Slot
           </button>
         </li>
         <li>
           <button
-            className={view === 'myBookings' ? 'active' : ''}
-            onClick={() => navigate('myBookings')}
+            className={pathname === '/my-bookings' ? 'active' : ''}
+            onClick={() => navigate('/my-bookings')}
           >
             My Bookings
           </button>
@@ -40,8 +48,8 @@ export default function Navbar() {
         {isAdmin && (
           <li>
             <button
-              className={`nav-admin ${view === 'adminMachines' ? 'active' : ''}`}
-              onClick={() => navigate('adminMachines')}
+              className={`nav-admin ${pathname === '/admin/machines' ? 'active' : ''}`}
+              onClick={() => navigate('/admin/machines')}
             >
               ⚙ Machines
             </button>
@@ -51,7 +59,7 @@ export default function Navbar() {
 
       <div className="navbar-right">
         <span>Hi, {currentUser.name.split(' ')[0]}</span>
-        <button className="btn-signout" onClick={logout}>
+        <button className="btn-signout" onClick={handleLogout}>
           Sign Out
         </button>
       </div>

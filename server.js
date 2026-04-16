@@ -1,105 +1,93 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
+const path    = require('path');
 const { testConnection } = require('./config/database');
 
-// Import routes
-const authRoutes = require('./routes/auth');
+// Route files
+const authRoutes    = require('./routes/auth');
 const machineRoutes = require('./routes/machines');
 const bookingRoutes = require('./routes/bookings');
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
+// Basic request logger
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// Root route
-app.get('/', (req, res) => {
+// ── API Routes ────────────────────────────────────────────────────────────────
+app.use('/api/auth',     authRoutes);
+app.use('/api/machines', machineRoutes);
+app.use('/api/bookings', bookingRoutes);
+
+// Health-check / docs endpoint (useful for Render uptime checks)
+app.get('/api', (req, res) => {
   res.json({
     success: true,
     message: 'WashTime API - Laundry Booking System',
     version: '1.0.0',
-    database: 'PostgreSQL (Render)',
     endpoints: {
-      auth: {
-        register: 'POST /api/auth/register',
-        login: 'POST /api/auth/login'
-      },
-      machines: {
-        getAll: 'GET /api/machines',
-        getOne: 'GET /api/machines/:id',
-        create: 'POST /api/machines (Admin)',
-        update: 'PUT /api/machines/:id (Admin)',
-        delete: 'DELETE /api/machines/:id (Admin)'
-      },
-      bookings: {
-        getUserBookings: 'GET /api/bookings',
-        getAvailableSlots: 'GET /api/bookings/available?date=YYYY-MM-DD&machine_id=1',
-        getOne: 'GET /api/bookings/:id',
-        create: 'POST /api/bookings',
-        update: 'PUT /api/bookings/:id',
-        cancel: 'DELETE /api/bookings/:id'
-      }
-    }
+      auth:     { register: 'POST /api/auth/register', login: 'POST /api/auth/login' },
+      machines: { getAll: 'GET /api/machines', create: 'POST /api/machines (Admin)' },
+      bookings: { getUserBookings: 'GET /api/bookings', create: 'POST /api/bookings' },
+    },
   });
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/machines', machineRoutes);
-app.use('/api/bookings', bookingRoutes);
+// ── Serve React build in production ──────────────────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  const clientDist = path.join(__dirname, 'client', 'dist');
+  app.use(express.static(clientDist));
 
-// 404 handler
+  // All non-API routes hand off to React Router
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
+// ── 404 (dev only — in prod the wildcard above catches unknown routes) ────────
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
+  res.status(404).json({ success: false, message: 'Route not found' });
 });
 
-// Global error handler
+// ── Global error handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     success: false,
     message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
   });
 });
 
-// Start server
-const startServer = async () => {
+// ── Start server ──────────────────────────────────────────────────────────────
+async function startServer() {
   try {
-    // Test database connection
     const dbConnected = await testConnection();
-    
+
     if (!dbConnected) {
-      console.error('❌ Failed to connect to database. Please check your .env file.');
-      console.log('💡 Make sure DATABASE_URL is set correctly in .env');
-      console.log('💡 Run "npm run init-db" to initialize the database first.');
+      console.error('Failed to connect to database. Check your .env file.');
       process.exit(1);
     }
 
     app.listen(PORT, () => {
-      console.log(`\n🚀 WashTime API Server running on port ${PORT}`);
-      console.log(`📍 Local: http://localhost:${PORT}`);
-      console.log(`🗄️  Database: PostgreSQL (Render)`);
-      console.log(`📚 API Documentation: http://localhost:${PORT}/\n`);
+      console.log(`\nWashTime API running on port ${PORT}`);
+      console.log(`Local: http://localhost:${PORT}`);
+      console.log(`Database: PostgreSQL (Render)\n`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
   }
-};
+}
 
 startServer();
 

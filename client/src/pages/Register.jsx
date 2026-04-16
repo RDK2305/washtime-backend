@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function Register() {
-  const { register, navigate } = useApp()
+  const { register } = useApp()
+  const navigate     = useNavigate()
 
   const [form, setForm] = useState({
     name: '',
@@ -27,20 +29,22 @@ export default function Register() {
     return null
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+
     const msg = validate()
     if (msg) return setError(msg)
+
     setLoading(true)
-    setTimeout(() => {
-      try {
-        register(form.name.trim(), form.email.trim(), form.password, form.role)
-      } catch (err) {
-        setError(err.message)
-        setLoading(false)
-      }
-    }, 400)
+    try {
+      await register(form.name.trim(), form.email.trim(), form.password, form.role)
+      navigate('/login', { state: { registered: true } })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -146,7 +150,7 @@ export default function Register() {
 
         <div className="auth-foot">
           Already have an account?{' '}
-          <button onClick={() => navigate('login')}>Sign in</button>
+          <button onClick={() => navigate('/login')}>Sign in</button>
         </div>
       </div>
     </div>

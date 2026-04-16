@@ -1,8 +1,14 @@
 import { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function Login() {
-  const { login, navigate } = useApp()
+  const { login }   = useApp()
+  const navigate    = useNavigate()
+  const location    = useLocation()
+
+  const justRegistered = location.state?.registered === true
+
   const [form, setForm]     = useState({ email: '', password: '' })
   const [error, setError]   = useState('')
   const [loading, setLoading] = useState(false)
@@ -11,22 +17,23 @@ export default function Login() {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+
     if (!form.email || !form.password) {
       return setError('Please fill in all fields.')
     }
+
     setLoading(true)
-    // Slight delay to show loading state (simulates async)
-    setTimeout(() => {
-      try {
-        login(form.email, form.password)
-      } catch (err) {
-        setError(err.message)
-        setLoading(false)
-      }
-    }, 400)
+    try {
+      await login(form.email.trim(), form.password)
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -39,6 +46,12 @@ export default function Login() {
         </div>
 
         <div className="auth-body">
+          {justRegistered && (
+            <div className="alert alert-success">
+              Account created! Sign in below.
+            </div>
+          )}
+
           {error && <div className="alert alert-error">{error}</div>}
 
           <form onSubmit={handleSubmit} noValidate>
@@ -99,7 +112,7 @@ export default function Login() {
 
         <div className="auth-foot">
           Don't have an account?{' '}
-          <button onClick={() => navigate('register')}>Create one</button>
+          <button onClick={() => navigate('/register')}>Create one</button>
         </div>
       </div>
     </div>
