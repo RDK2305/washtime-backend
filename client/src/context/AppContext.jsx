@@ -13,22 +13,19 @@ import {
 
 const AppContext = createContext(null)
 
-// Normalize a booking row coming from the database.
-// PostgreSQL returns dates as ISO timestamps and times as HH:MM:SS — strip them down.
+// PostgreSQL sends dates as full ISO strings and times as HH:MM:SS
+// This function strips them down to just the parts we actually need
 function normalizeBooking(b) {
   return {
     ...b,
-    booking_date: b.booking_date
-      ? String(b.booking_date).split('T')[0]
-      : b.booking_date,
+    booking_date: b.booking_date ? String(b.booking_date).split('T')[0] : b.booking_date,
     start_time: b.start_time ? b.start_time.substring(0, 5) : b.start_time,
-    end_time:   b.end_time   ? b.end_time.substring(0, 5)   : b.end_time,
+    end_time: b.end_time ? b.end_time.substring(0, 5) : b.end_time,
   }
 }
 
-// ─── Provider ────────────────────────────────────────────────────────────────
-
 export function AppProvider({ children }) {
+  // Try to restore the session from localStorage so the user stays logged in on refresh
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const raw = localStorage.getItem('wt_session')
@@ -41,14 +38,12 @@ export function AppProvider({ children }) {
   const [machines, setMachines] = useState([])
   const [bookings, setBookings] = useState([])
 
-  // ── Load machines and bookings whenever a user is logged in ─────────────────
-
   const loadMachines = useCallback(async () => {
     try {
       const data = await apiGetMachines()
       setMachines(data.machines || [])
     } catch {
-      // token may have expired; leave the existing list in place
+      // if the token expired just leave the list as-is
     }
   }, [])
 
@@ -62,6 +57,7 @@ export function AppProvider({ children }) {
     }
   }, [])
 
+  // Load data whenever a user logs in, clear it when they log out
   useEffect(() => {
     if (currentUser) {
       loadMachines()
@@ -72,7 +68,7 @@ export function AppProvider({ children }) {
     }
   }, [currentUser, loadMachines, loadBookings])
 
-  // ── Auth ────────────────────────────────────────────────────────────────────
+  // auth functions
 
   const login = useCallback(async (email, password) => {
     const data = await apiLogin(email, password)
@@ -83,7 +79,7 @@ export function AppProvider({ children }) {
 
   const register = useCallback(async (name, email, password, role) => {
     await apiRegister(name, email, password, role)
-    // Registration succeeds — caller should redirect to /login
+    // after registering the caller redirects to /login
   }, [])
 
   const logout = useCallback(() => {
@@ -92,7 +88,7 @@ export function AppProvider({ children }) {
     setCurrentUser(null)
   }, [])
 
-  // ── Machines ────────────────────────────────────────────────────────────────
+  // machine functions
 
   const addMachine = useCallback(async (machine_type, machine_number) => {
     await apiAddMachine(machine_type, machine_number)
@@ -109,7 +105,7 @@ export function AppProvider({ children }) {
     await loadMachines()
   }, [loadMachines])
 
-  // ── Bookings ─────────────────────────────────────────────────────────────────
+  // booking functions
 
   const createBooking = useCallback(async ({ machine_id, booking_date, start_time, end_time }) => {
     await apiCreateBooking(machine_id, booking_date, start_time, end_time)
@@ -121,7 +117,7 @@ export function AppProvider({ children }) {
     await loadBookings()
   }, [loadBookings])
 
-  // myBookings == all bookings (API already filters by logged-in user)
+  // the API already filters bookings by the logged-in user
   const myBookings = bookings
 
   return (

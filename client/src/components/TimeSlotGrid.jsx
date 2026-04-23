@@ -1,5 +1,5 @@
-// TimeSlotGrid — unique visual slot picker component
-// Each block = 1 hour. User clicks start slot then end slot (inclusive).
+// Visual time slot grid - each block is 1 hour
+// User clicks a start slot and then an end slot to pick a range
 
 const HOURS = [
   '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',

@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 
 export default function Register() {
   const { register } = useApp()
-  const navigate     = useNavigate()
+  const navigate = useNavigate()
 
   const [form, setForm] = useState({
     name: '',
@@ -13,16 +13,17 @@ export default function Register() {
     confirm: '',
     role: 'Resident',
   })
-  const [error, setError]     = useState('')
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
+  // Basic client-side validation before sending anything to the server
   function validate() {
-    if (!form.name.trim())   return 'Full name is required.'
-    if (!form.email.trim())  return 'Email address is required.'
+    if (!form.name.trim()) return 'Full name is required.'
+    if (!form.email.trim()) return 'Email address is required.'
     if (!/\S+@\S+\.\S+/.test(form.email)) return 'Enter a valid email address.'
     if (form.password.length < 6) return 'Password must be at least 6 characters.'
     if (form.password !== form.confirm) return 'Passwords do not match.'

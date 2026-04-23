@@ -25,16 +25,16 @@ export default function BookSlot() {
   const { machines, createBooking } = useApp()
   const navigate = useNavigate()
 
-  const [step, setStep]               = useState(1)
+  const [step, setStep] = useState(1)
   const [selectedMachine, setMachine] = useState(null)
-  const [selectedDate, setDate]       = useState(new Date().toISOString().split('T')[0])
-  const [startTime, setStart]         = useState(null)
-  const [endTime, setEnd]             = useState(null)
+  const [selectedDate, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [startTime, setStart] = useState(null)
+  const [endTime, setEnd] = useState(null)
   const [bookedSlots, setBookedSlots] = useState([])
-  const [slotError, setSlotError]     = useState('')
+  const [slotError, setSlotError] = useState('')
   const [submitError, setSubmitError] = useState('')
-  const [submitting, setSubmitting]   = useState(false)
-  const [success, setSuccess]         = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
 
   const activeMachines = machines.filter((m) => m.is_active)
 
@@ -48,11 +48,11 @@ export default function BookSlot() {
       try {
         const data = await apiGetAvailableSlots(selectedMachine.machine_id, selectedDate)
         const raw = data.booked_slots || []
-        // Normalize times (PostgreSQL returns HH:MM:SS)
+        // Normalize times because PostgreSQL returns HH:MM:SS but we only need HH:MM
         const normalized = raw.map((b) => ({
           ...b,
           start_time: b.start_time ? b.start_time.substring(0, 5) : b.start_time,
-          end_time:   b.end_time   ? b.end_time.substring(0, 5)   : b.end_time,
+          end_time: b.end_time ? b.end_time.substring(0, 5) : b.end_time,
         }))
         setBookedSlots(normalized)
       } catch {
@@ -62,7 +62,7 @@ export default function BookSlot() {
     fetchSlots()
   }, [selectedMachine, selectedDate])
 
-  // ── Step 1: machine selection ──────────────────────────────────────────────
+  // Step 1: user picks a machine
   function pickMachine(machine) {
     setMachine(machine)
     setStart(null)
@@ -72,7 +72,7 @@ export default function BookSlot() {
     setStep(2)
   }
 
-  // ── Step 2: date change ────────────────────────────────────────────────────
+  // Step 2: user changes the date
   function handleDateChange(e) {
     setDate(e.target.value)
     setStart(null)
@@ -80,7 +80,7 @@ export default function BookSlot() {
     setSlotError('')
   }
 
-  // ── Step 2: slot click ─────────────────────────────────────────────────────
+  // Step 2: user clicks a time slot on the grid
   function handleSlotClick(slot) {
     setSlotError('')
 
@@ -114,16 +114,16 @@ export default function BookSlot() {
     setStep(3)
   }
 
-  // ── Step 3: confirm booking ────────────────────────────────────────────────
+  // Step 3: actually submit the booking
   async function handleConfirm() {
     setSubmitError('')
     setSubmitting(true)
     try {
       await createBooking({
-        machine_id:   selectedMachine.machine_id,
+        machine_id: selectedMachine.machine_id,
         booking_date: selectedDate,
-        start_time:   startTime,
-        end_time:     computeEndTime(endTime),
+        start_time: startTime,
+        end_time: computeEndTime(endTime),
       })
       setSuccess(true)
     } catch (err) {
@@ -134,7 +134,7 @@ export default function BookSlot() {
     }
   }
 
-  // ── Success screen ─────────────────────────────────────────────────────────
+  // Show a success screen after the booking is saved
   if (success) {
     return (
       <div>
@@ -177,7 +177,7 @@ export default function BookSlot() {
         </p>
       </div>
 
-      {/* Step Wizard */}
+      {/* Step indicator */}
       <div className="wizard">
         <div className="wizard-step">
           <div className={`step-num ${step > 1 ? 'done' : step === 1 ? 'active' : ''}`}>
@@ -201,7 +201,7 @@ export default function BookSlot() {
 
       {submitError && <div className="alert alert-error mb-2">{submitError}</div>}
 
-      {/* ── Step 1: Pick Machine ── */}
+      {/* Step 1: pick machine */}
       {step === 1 && (
         <div className="card">
           <div className="card-header">
@@ -242,7 +242,7 @@ export default function BookSlot() {
         </div>
       )}
 
-      {/* ── Step 2: Date & Time Grid ── */}
+      {/* Step 2: pick date and time */}
       {step === 2 && selectedMachine && (
         <div className="card">
           <div className="card-header">
@@ -288,7 +288,7 @@ export default function BookSlot() {
         </div>
       )}
 
-      {/* ── Step 3: Confirm ── */}
+      {/* Step 3: confirm the booking details before submitting */}
       {step === 3 && selectedMachine && startTime && endTime && (
         <div className="card">
           <div className="card-header">

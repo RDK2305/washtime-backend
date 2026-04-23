@@ -3,14 +3,15 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function Login() {
-  const { login }   = useApp()
-  const navigate    = useNavigate()
-  const location    = useLocation()
+  const { login } = useApp()
+  const navigate = useNavigate()
+  const location = useLocation()
 
+  // Check if the user just finished registering so we can show a success message
   const justRegistered = location.state?.registered === true
 
-  const [form, setForm]     = useState({ email: '', password: '' })
-  const [error, setError]   = useState('')
+  const [form, setForm] = useState({ email: '', password: '' })
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   function handleChange(e) {

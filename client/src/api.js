@@ -1,5 +1,5 @@
-// api.js — thin wrapper around native fetch
-// All requests go to /api (proxied to :3000 in dev, same-origin in production)
+// api.js — all fetch calls to the backend go through here
+// The base URL is /api which Vite proxies to port 3000 in dev
 
 const BASE = '/api'
 
@@ -7,6 +7,7 @@ function getToken() {
   return localStorage.getItem('wt_token')
 }
 
+// Attaches the JWT so the server knows who is making the request
 function buildHeaders() {
   const h = { 'Content-Type': 'application/json' }
   const token = getToken()
@@ -27,7 +28,7 @@ async function request(method, path, body) {
   const data = await res.json()
 
   if (!res.ok) {
-    // Prefer a message field, fall back to generic
+    // Try to grab a useful message from the response, otherwise fall back
     const msg = data.message || (data.errors && data.errors[0]?.msg) || 'Something went wrong.'
     throw new Error(msg)
   }
@@ -35,7 +36,7 @@ async function request(method, path, body) {
   return data
 }
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
+// auth
 
 export function apiLogin(email, password) {
   return request('POST', '/auth/login', { email, password })
@@ -45,7 +46,7 @@ export function apiRegister(name, email, password, role) {
   return request('POST', '/auth/register', { name, email, password, role })
 }
 
-// ── Machines ─────────────────────────────────────────────────────────────────
+// machines
 
 export function apiGetMachines() {
   return request('GET', '/machines')
@@ -63,7 +64,7 @@ export function apiDeleteMachine(id) {
   return request('DELETE', `/machines/${id}`)
 }
 
-// ── Bookings ──────────────────────────────────────────────────────────────────
+// bookings
 
 export function apiGetBookings() {
   return request('GET', '/bookings')
